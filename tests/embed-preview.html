@@ -1,0 +1,47 @@
+<!doctype html><meta charset="utf-8"><title>Kelp embed checks</title>
+<style>body{font:16px system-ui;background:#eee}iframe{display:block;border:1px solid #888;margin-bottom:20px;max-width:100%}pre{white-space:pre-wrap}button{padding:10px}</style>
+<h1>Kelp embed checks</h1><button id="run">Run control and overflow checks</button><pre id="results">Loading?</pre>
+<h2>Ocean - full width</h2><iframe title="Ocean full width" src="../ocean-embed.html" width="1100" height="1050"></iframe>
+<h2>Relationships - full width</h2><iframe title="Relationships full width" src="../relationships-embed.html" width="1100" height="1250"></iframe>
+<h2 id="narrow-ocean">Ocean - 320px iframe</h2><iframe title="Ocean narrow iframe" src="../ocean-embed.html" width="320" height="1100"></iframe>
+<h2 id="narrow-relationships">Relationships - 320px iframe</h2><iframe title="Relationships narrow iframe" src="../relationships-embed.html" width="320" height="1250"></iframe>
+<script>
+const frames=[...document.querySelectorAll('iframe')];
+const delay=ms=>new Promise(r=>setTimeout(r,ms));
+const logs=[];let running=false;
+async function check(){
+ if(running)return;running=true;
+ logs.length=0;
+ for(const frame of frames){
+  const d=frame.contentDocument,w=frame.contentWindow;
+  const assert=(pass,message)=>{logs.push(`${pass?'PASS':'FAIL'} ${frame.title}: ${message}`);results.textContent=logs.join('\n')};
+  assert(d.documentElement.scrollWidth<=d.documentElement.clientWidth,`no horizontal overflow (${d.documentElement.scrollWidth}/${d.documentElement.clientWidth}px)`);
+  assert(!d.querySelector('header,nav,.intro,footer'),'no site-wide chrome');
+  assert(d.querySelector('#notice').textContent.includes('synthetic'),'sample-data notice');
+  const slider=d.querySelector('#time'),motion=d.querySelector('#motion');
+  motion.checked=true;motion.dispatchEvent(new w.Event('change'));
+  for(const i of [80,12,110,33]){slider.value=i;slider.dispatchEvent(new w.Event('input'));await delay(60);assert([...d.querySelectorAll('.date-fade')].every(h=>h.children.length<=2),'at most two date layers')}
+  motion.checked=false;motion.dispatchEvent(new w.Event('change'));
+  assert(d.querySelector('#date').textContent==='2003 \u00b7 Q2','Motion off settles selected date');
+  if(d.querySelector('#calendar')){
+   assert(d.querySelectorAll('.calcell').length===124,'124 heatmap quarters');
+   d.querySelector('.calcell[data-i="123"]').click();assert(slider.value==='123'&&d.querySelector('#date').textContent==='2025 \u00b7 Q4','heatmap updates selection');
+   assert(d.querySelector('#kelpVal').textContent==='105,031 m\u00b2','exact selected measurement');
+   for(const id of ['tempFx','upFx']){const box=d.getElementById(id);box.click();box.click()}
+  }else{
+   const v=d.querySelector('#variable'),lag=d.querySelector('#lag');
+   v.value='up';v.dispatchEvent(new w.Event('change'));lag.value='2';lag.dispatchEvent(new w.Event('change'));
+   assert(d.querySelector('#pairCount').textContent.startsWith('122 paired'),'lag controls update observation pairs');
+   assert(d.querySelector('#scatter').textContent.includes('Upwelling seasonal anomaly'),'variable changes scatterplot');
+   const circle=d.querySelector('#scatter circle');circle.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter'}));assert(slider.value==='2','scatter keyboard selection links to quarter');
+   d.querySelector('#series').dispatchEvent(new w.MouseEvent('click',{clientX:d.querySelector('#series').getBoundingClientRect().left+d.querySelector('#series').getBoundingClientRect().width*.8}));
+   assert(+slider.value>80,'series chart links to quarter');
+  }
+  motion.checked=true;motion.dispatchEvent(new w.Event('change'));d.querySelector('#play').click();const initial=slider.value;await delay(2850);
+  assert(slider.value!==initial,'autoplay advances');assert(d.querySelector('#date').children.length===1,'autoplay settles before next advance');d.querySelector('#play').click();
+ }
+ results.textContent=logs.join('\n')+'\nDONE';running=false;
+}
+run.onclick=check;
+Promise.all(frames.map(f=>new Promise(r=>f.onload=r))).then(check);
+</script>

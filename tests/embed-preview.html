@@ -1,10 +1,12 @@
 <!doctype html><meta charset="utf-8"><title>Kelp embed checks</title>
 <style>body{font:16px system-ui;background:#eee}iframe{display:block;border:1px solid #888;margin-bottom:20px;max-width:100%}pre{white-space:pre-wrap}button{padding:10px}</style>
-<h1>Kelp embed checks</h1><button id="run">Run control and overflow checks</button><pre id="results">Loading?</pre>
+<h1>Kelp embed checks</h1><button id="run">Run control and overflow checks</button><pre id="results">Loading project data...</pre>
+<form><label>Real quarter <select name="case"><option value="2015-4">Warm anomaly - 2015 Q4</option><option value="2010-3">Cold anomaly - 2010 Q3</option><option value="2006-2">Near neutral - 2006 Q2</option><option value="2006-3">Low positive kelp - 2006 Q3</option><option value="2009-1">High kelp - 2009 Q1</option><option value="1996-1">Flagged reported zero - 1996 Q1</option><option value="1995-4">Missing kelp - 1995 Q4</option><option value="2015-1">Negative CUTI - 2015 Q1</option><option value="2005-2">Strong positive CUTI - 2005 Q2</option></select></label><button>Preview real quarter</button></form>
 <h2>Ocean - full width</h2><iframe title="Ocean full width" src="../ocean-embed.html" width="1100" height="1050"></iframe>
 <h2>Relationships - full width</h2><iframe title="Relationships full width" src="../relationships-embed.html" width="1100" height="1250"></iframe>
 <h2 id="narrow-ocean">Ocean - 320px iframe</h2><iframe title="Ocean narrow iframe" src="../ocean-embed.html" width="320" height="1100"></iframe>
 <h2 id="narrow-relationships">Relationships - 320px iframe</h2><iframe title="Relationships narrow iframe" src="../relationships-embed.html" width="320" height="1250"></iframe>
+<h2 id="standalone">Standalone regression check</h2><iframe title="Standalone explorer" src="../index.html" width="1100" height="1100"></iframe>
 <script>
 const frames=[...document.querySelectorAll('iframe')];
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
@@ -13,35 +15,77 @@ async function check(){
  if(running)return;running=true;
  logs.length=0;
  for(const frame of frames){
+  frame.scrollIntoView({block:'start'});
   const d=frame.contentDocument,w=frame.contentWindow;
   const assert=(pass,message)=>{logs.push(`${pass?'PASS':'FAIL'} ${frame.title}: ${message}`);results.textContent=logs.join('\n')};
   assert(d.documentElement.scrollWidth<=d.documentElement.clientWidth,`no horizontal overflow (${d.documentElement.scrollWidth}/${d.documentElement.clientWidth}px)`);
-  assert(!d.querySelector('header,nav,.intro,footer'),'no site-wide chrome');
-  assert(d.querySelector('#notice').textContent.includes('synthetic'),'sample-data notice');
+  if(!frame.src.includes('index.html'))assert(!d.querySelector('header,nav,.intro,footer'),'no site-wide chrome');
+  assert(d.querySelector('#notice').textContent.includes('PROJECT DATA'),'project-data status');
   const slider=d.querySelector('#time'),motion=d.querySelector('#motion');
   motion.checked=true;motion.dispatchEvent(new w.Event('change'));
   for(const i of [80,12,110,33]){slider.value=i;slider.dispatchEvent(new w.Event('input'));await delay(60);assert([...d.querySelectorAll('.date-fade')].every(h=>h.children.length<=2),'at most two date layers')}
   motion.checked=false;motion.dispatchEvent(new w.Event('change'));
-  assert(d.querySelector('#date').textContent==='2003 \u00b7 Q2','Motion off settles selected date');
+  assert(d.querySelector('#date').textContent==='Apr\u2013Jun 2003 (Q2)','Motion off settles selected date');
   if(d.querySelector('#calendar')){
    assert(d.querySelectorAll('.calcell').length===124,'124 heatmap quarters');
-   d.querySelector('.calcell[data-i="123"]').click();assert(slider.value==='123'&&d.querySelector('#date').textContent==='2025 \u00b7 Q4','heatmap updates selection');
-   assert(d.querySelector('#kelpVal').textContent==='105,031 m\u00b2','exact selected measurement');
+   d.querySelector('.calcell[data-i="123"]').click();assert(slider.value==='123'&&d.querySelector('#date').textContent==='Oct\u2013Dec 2025 (Q4)','heatmap updates selection');
+   assert(d.querySelector('#kelpVal').textContent==='0.064591 km\u00b2','exact selected measurement');
+   d.querySelector('.calcell[data-i="3"]').click();
+   assert(d.querySelector('#kelpVal').textContent==='No observation','missing quarter is not zero');
+   d.querySelector('.calcell[data-i="4"]').click();
+   assert(d.querySelector('#kelpVal').textContent==='0.000 km\u00b2'&&d.querySelector('#heatmapSelection').textContent.includes('not a confirmed absence'),'flagged zero retained and qualified');
+   const zero=d.querySelector('.calcell[data-i="4"]');
+   zero.dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+   assert(slider.value==='8','heatmap arrow-key selection');
    for(const id of ['tempFx','upFx']){const box=d.getElementById(id);box.click();box.click()}
   }else{
    const v=d.querySelector('#variable'),lag=d.querySelector('#lag');
    v.value='up';v.dispatchEvent(new w.Event('change'));lag.value='2';lag.dispatchEvent(new w.Event('change'));
-   assert(d.querySelector('#pairCount').textContent.startsWith('122 paired'),'lag controls update observation pairs');
-   assert(d.querySelector('#scatter').textContent.includes('Upwelling seasonal anomaly'),'variable changes scatterplot');
+   assert(d.querySelector('#pairCount').textContent.startsWith('121 paired'),'lag controls update observation pairs');
+   assert(d.querySelector('#scatter').textContent.includes('Regional upwelling'),'variable changes scatterplot');
+   for(const key of ['temp','up']){
+    v.value=key;v.dispatchEvent(new w.Event('change'));
+    let xRange,yRange;
+    for(const timing of ['0','1','2']){
+     lag.value=timing;lag.dispatchEvent(new w.Event('change'));
+     const plot=d.querySelector('#scatter');
+     if(timing==='0'){xRange=plot.dataset.xRange;yRange=plot.dataset.yRange}
+     assert(plot.dataset.xRange===xRange&&plot.dataset.yRange===yRange,`${key}, lag ${timing}: stable axis ranges`);
+     assert(d.querySelector('#pairCount').textContent.startsWith(`${123-Number(timing)} paired`),`${key}, lag ${timing}: observed pairs`);
+    }
+   }
    const circle=d.querySelector('#scatter circle');circle.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter'}));assert(slider.value==='2','scatter keyboard selection links to quarter');
    d.querySelector('#series').dispatchEvent(new w.MouseEvent('click',{clientX:d.querySelector('#series').getBoundingClientRect().left+d.querySelector('#series').getBoundingClientRect().width*.8}));
    assert(+slider.value>80,'series chart links to quarter');
   }
-  motion.checked=true;motion.dispatchEvent(new w.Event('change'));d.querySelector('#play').click();const initial=slider.value;await delay(2850);
+  frame.scrollIntoView({block:'start'});motion.checked=true;motion.dispatchEvent(new w.Event('change'));d.querySelector('#play').click();const initial=slider.value;await delay(2850);await new Promise(resolve=>w.requestAnimationFrame(resolve));
   assert(slider.value!==initial,'autoplay advances');assert(d.querySelector('#date').children.length===1,'autoplay settles before next advance');d.querySelector('#play').click();
  }
+ for(const frame of frames){const d=frame.contentDocument;logs.push(`${d.documentElement.scrollWidth<=d.documentElement.clientWidth?'PASS':'FAIL'} ${frame.title}: final page overflow`)}
  results.textContent=logs.join('\n')+'\nDONE';running=false;
 }
 run.onclick=check;
-Promise.all(frames.map(f=>new Promise(r=>f.onload=r))).then(check);
+async function loaded(){
+ for(const frame of frames){
+  for(let attempt=0;attempt<200;attempt++){
+   if(frame.contentDocument?.querySelector('#time')?.disabled===false && frame.contentDocument?.querySelector('#notice')?.textContent.includes('PROJECT DATA'))break;
+   await delay(50);
+  }
+ }
+}
+function previewCase(){
+ const selected=new URLSearchParams(location.search).get('case')||'2015-4';
+ const [year,quarter]=selected.split('-').map(Number);
+ document.querySelector('[name="case"]').value=selected;
+ for(const frame of frames){
+  frame.scrollIntoView({block:'start'});
+  const d=frame.contentDocument,w=frame.contentWindow;
+  const slider=d.querySelector('#time'),motion=d.querySelector('#motion');
+  motion.checked=false;motion.dispatchEvent(new w.Event('change'));
+  slider.value=(year-1995)*4+quarter-1;slider.dispatchEvent(new w.Event('input'));
+ }
+ if(location.hash)document.getElementById(location.hash.slice(1))?.scrollIntoView({block:'start'});
+ results.textContent=`Real project observations: ${year} Q${quarter}. Motion off shows static current direction. Turn Motion on inside a frame to animate.`;
+}
+loaded().then(()=>new URLSearchParams(location.search).has('case')?previewCase():check());
 </script>

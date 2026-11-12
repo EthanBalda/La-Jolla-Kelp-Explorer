@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Ocean relationships: illustrative La Jolla kelp explorer with synthetic demonstration data.">
+  <title>Ocean relationships | La Jolla Kelp Explorer</title>
+  <link rel="stylesheet" href="src/styles.css">
+  <script src="src/main.js" defer></script>
+</head>
+<body class="embed-page embed-relationships">
+<div class="notice" id="notice">ILLUSTRATIVE PROTOTYPE · All values are synthetic demonstration data. These animations and correlations are not research findings.</div>
+<main aria-label="Ocean relationships">
+<div class="timeline"><div class="time-head"><button class="button" id="play" aria-label="Play timeline">▶ Play</button><strong id="date">1995 · Q1</strong><label class="embed-motion"><input id="motion" type="checkbox" checked> Motion</label><input id="time" type="range" min="0" max="123" value="0" aria-label="Selected year and quarter"></div><div class="years"><span>1995</span><span>2000</span><span>2005</span><span>2010</span><span>2015</span><span>2020</span><span>2025</span></div></div><section class="content"><div class="section-head"><div><div class="eyebrow">02 / Follow the same moment</div><h2>Three signals. One timeline.</h2><p class="sub">Separate scales preserve each variable’s units. Click a graph or scatter point to select a quarter across both charts.</p></div></div><div class="chartbox"><div class="legend"><span><i class="dot" style="background:#bdd794"></i>Kelp area</span><span><i class="dot" style="background:#edac86"></i>Temperature anomaly</span><span><i class="dot" style="background:#82c8de"></i>Upwelling</span></div><svg id="series" viewBox="0 0 1000 340" role="img" aria-label="Linked time-series graphs"></svg></div></section><section class="content" id="relationships"><div class="section-head"><div><div class="eyebrow">03 / Ask a deeper question</div><h2>Do the signals move together?</h2><p class="sub">Explore paired observations and possible delays. A relationship can have exceptions; association alone does not establish cause.</p></div></div><div class="chartbox twocol"><svg id="scatter" viewBox="0 0 600 370" role="img" aria-label="Environmental variable versus kelp anomaly scatterplot"></svg><div class="controls"><label for="variable">Compare seasonal anomalies</label><select id="variable"><option value="temp">Temperature vs. kelp</option><option value="up">Upwelling vs. kelp</option></select><label for="lag">Environmental conditions measured</label><select id="lag"><option value="0">In the same quarter as kelp</option><option value="1">One quarter before kelp</option><option value="2">Two quarters before kelp</option></select><div><div class="stat" id="rval"></div><p class="sub" id="pairCount"></p></div><p class="sub">Anomalies subtract each quarter’s average over the loaded record. Correlations here are exploratory; time dependence and other factors need further analysis.</p></div></div></section>
+</main>
+</body>
+</html>

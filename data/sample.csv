@@ -1,0 +1,5 @@
+year,quarter,kelp_area_m2,temp_anomaly_c,mean_upwelling_index
+1995,1,150000,-0.4,45
+1995,2,180000,0.2,60
+1995,3,160000,0.5,30
+1995,4,140000,-0.1,40

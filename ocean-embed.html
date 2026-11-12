@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Ocean time machine: illustrative La Jolla kelp explorer with synthetic demonstration data.">
+  <title>Ocean time machine | La Jolla Kelp Explorer</title>
+  <link rel="stylesheet" href="src/styles.css">
+  <script src="src/main.js" defer></script>
+</head>
+<body class="embed-page embed-ocean">
+<div class="notice" id="notice">ILLUSTRATIVE PROTOTYPE · All values are synthetic demonstration data. These animations and correlations are not research findings.</div>
+<main aria-label="Ocean time machine">
+<div id="explore" class="scene-wrap"><canvas id="ocean" aria-label="Illustrative underwater kelp scene controlled by the selected quarter" role="img"></canvas><div class="overlay"><div class="eyebrow">The ocean time machine</div><h2 id="sceneDate">Winter 1995</h2><p>One moment. Three measurements.<br>Drag the timeline to explore their changes.</p></div><div class="scene-meta">LA JOLLA, CALIFORNIA<br><br>ILLUSTRATED CROSS-SECTION</div><div class="scene-caption">Kelp extent represents canopy area. Plant height, currents, and water effects are illustrative.</div><div class="layer-controls"><label><input id="tempFx" type="checkbox" checked> Temperature</label><label><input id="upFx" type="checkbox" checked> Upwelling</label><label><input id="motion" type="checkbox" checked> Motion</label></div></div>
+<div class="timeline"><div class="time-head"><button class="button" id="play" aria-label="Play timeline">▶ Play</button><strong id="date">1995 · Q1</strong><input id="time" type="range" min="0" max="123" value="0" aria-label="Selected year and quarter"></div><div class="years"><span>1995</span><span>2000</span><span>2005</span><span>2010</span><span>2015</span><span>2020</span><span>2025</span></div></div>
+<div class="metrics" aria-live="polite"><div class="metric"><label>Kelp canopy area</label><div class="value" id="kelpVal"></div><small>Extent of surface canopy</small></div><div class="metric"><label>Temperature anomaly</label><div class="value" id="tempVal"></div><small>Relative to seasonal baseline</small></div><div class="metric"><label>Upwelling index</label><div class="value" id="upVal"></div><small id="upUnit">Synthetic index · arbitrary units</small></div></div>
+<section class="content"><div class="section-head"><div><div class="eyebrow">01 / See the rhythm</div><h2>Every season leaves a trace.</h2><p class="sub">Each square is one quarter. Darker green means greater canopy area. Select a square to visit that moment underwater.</p></div><span class="eyebrow">LESS KELP → MORE KELP</span></div><div class="chartbox"><div class="heatrows"><div class="quarters"><span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span></div><div class="calendar" id="calendar"></div></div><div class="calyears"><span>1995</span><span>2000</span><span>2005</span><span>2010</span><span>2015</span><span>2020</span><span>2025</span></div></div></section>
+</main>
+</body>
+</html>

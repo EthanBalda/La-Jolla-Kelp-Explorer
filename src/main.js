@@ -134,49 +134,70 @@ function anomalies(key) {
   });
 }
 
+const quarterMonths = ["Jan\u2013Mar", "Apr\u2013Jun", "Jul\u2013Sep", "Oct\u2013Dec"];
+const dateLabel = row => `${quarterMonths[row.quarter - 1]} ${row.year} (Q${row.quarter})`;
+const area = value => Number.isFinite(value)
+  ? `${(value / 1e6).toLocaleString(undefined, {minimumFractionDigits: 3, maximumFractionDigits: 6})} km\u00b2`
+  : "No observation";
+const signed = (value, decimals = 2) => Number.isFinite(value)
+  ? `${value >= 0 ? "+" : "\u2212"}${Math.abs(value).toFixed(decimals)}` : "No observation";
+// Rounded breaks near the 10th, 20th, 40th, 60th and 80th positive-data percentiles.
+// Units here are km2; the source observations remain in m2.
+const canopyBreaks = [0.002, 0.012, 0.05, 0.13, 0.4];
+const canopyColors = ["#edf6cd", "#d4e6a4", "#a7cd7a", "#76ad5b", "#45843f", "#205c33"];
+function canopyBand(value) {
+  const band = canopyBreaks.findIndex(limit => value / 1e6 <= limit);
+  return band < 0 ? canopyColors.length - 1 : band;
+}
+function kelpNote(row) {
+  return row.year === 1996 && row.quarter === 1
+    ? " Source flags this quarter as blank despite a reported zero and cloud-free cells; not a confirmed absence. Analytical treatment unchanged pending team review."
+    : "";
+}
 function renderCalendar() {
   const calendar = $("#calendar");
-
-  if (!calendar) {
-    return;
-  }
-
-  const [minimum, maximum] = extent(
-    data.map(row => row.kelp)
-  );
-
-  calendar.style.gridTemplateColumns =
-    `repeat(${END_YEAR - START_YEAR + 1}, minmax(0, 1fr))`;
-
+  if (!calendar) return;
+  calendar.style.gridTemplateColumns = `repeat(${END_YEAR - START_YEAR + 1}, minmax(0, 1fr))`;
   calendar.replaceChildren();
-
+  const years = $("#heatmapYears");
+  years?.replaceChildren();
+  for (let year = START_YEAR; year <= END_YEAR; year++) {
+    const label = document.createElement("span"); label.textContent = year; years?.append(label);
+  }
+  const legend = $("#canopyLegend");
+  legend?.replaceChildren();
+  const entries = [
+    ["zero", "Reported zero: 0 km\u00b2", "#a5afb4"],
+    ...canopyColors.map((color, i) => ["", `>${i ? canopyBreaks[i - 1] : 0} to ${canopyBreaks[i] ?? `max (${extent(data.map(row => row.kelp))[1] / 1e6})`} km\u00b2`, color]),
+    ["missing", "No observation (hatched)", ""]
+  ];
+  entries.forEach(([kind, label, color]) => {
+    const item = document.createElement("span"), swatch = document.createElement("i");
+    swatch.className = `canopy-swatch ${kind}`; swatch.style.backgroundColor = color;
+    item.append(swatch, document.createTextNode(label)); legend?.append(item);
+  });
   for (let quarter = 1; quarter <= 4; quarter++) {
     data.forEach((row, index) => {
-      if (row.quarter !== quarter) {
-        return;
-      }
-
+      if (row.quarter !== quarter) return;
       const button = document.createElement("button");
-
-      button.className = "calcell";
+      button.className = `calcell${row.kelp === null ? ' missing' : row.kelp === 0 ? ' zero' : ''}`;
       button.dataset.i = index;
-
-      button.style.background = row.kelp === null
-        ? "#647579"
-        : `hsl(100 30% ${
-            75 - 48 * norm(row.kelp, minimum, maximum)
-          }%)`;
-
-      const valueLabel = row.kelp === null
-        ? "Missing"
-        : `${fmt(row.kelp)} m²`;
-
-      button.title =
-        `${row.year} Q${quarter}: ${valueLabel}`;
-
+      if (row.kelp > 0) button.style.backgroundColor = canopyColors[canopyBand(row.kelp)];
+      button.title = `${dateLabel(row)}: ${area(row.kelp)}.${kelpNote(row)}`;
       button.setAttribute("aria-label", button.title);
       button.onclick = () => select(index);
-
+      button.onkeydown = event => {
+        const offsets = {ArrowLeft: -4, ArrowRight: 4, ArrowUp: -1, ArrowDown: 1};
+        let next = index;
+        if (event.key in offsets) {
+          if (event.key === 'ArrowUp' && row.quarter === 1 || event.key === 'ArrowDown' && row.quarter === 4) return;
+          next += offsets[event.key];
+        } else if (event.key === 'Home') next = quarter - 1;
+        else if (event.key === 'End') next = data.length - 5 + quarter;
+        else return;
+        event.preventDefault(); if (next < 0 || next >= data.length) return;
+        select(next); calendar.querySelector(`[data-i="${next}"]`)?.focus();
+      };
       calendar.append(button);
     });
   }
@@ -221,322 +242,144 @@ function txt(
   return node;
 }
 
+function chartWidth(svg) {
+  return Math.max(250, Math.round(svg.getBoundingClientRect().width || 600));
+}
+function wrappedText(svg, x, y, text, available, size = 13, color = '#e8eee7') {
+  const words = text.split(' '); let line = '', lines = 0;
+  for (const word of words) {
+    if ((line.length + word.length + 1) * size * 0.53 > available && line) {
+      txt(svg, x, y + lines++ * (size + 5), line, color, size); line = word;
+    } else line += (line ? ' ' : '') + word;
+  }
+  if (line) txt(svg, x, y + lines++ * (size + 5), line, color, size);
+  return lines;
+}
+function paddedRange(values) {
+  const [lo, hi] = extent([...values, 0]); const pad = (hi - lo || 1) * 0.06;
+  return [lo - pad, hi + pad];
+}
 function series() {
-  const svg = $("#series");
-
-  if (!svg) {
-    return;
-  }
-
+  const svg = $('#series'); if (!svg) return;
   svg.replaceChildren();
-
-  const keys = ["kelp", "temp", "up"];
-  const colors = ["#bdd794", "#edac86", "#82c8de"];
-  const units = ["m²", "°C", "m²/s"];
-
-  keys.forEach((key, panel) => {
-    const [minimum, maximum] = extent(
-      data.map(row => row[key])
-    );
-
-    const top = 15 + panel * 103;
-    const height = 75;
-
-    const X = index =>
-      68 + index / (data.length - 1) * 910;
-
-    const Y = value =>
-      top + height -
-      (value - minimum) / (maximum - minimum || 1) * height;
-
-    el(
-      "line",
-      {
-        x1: 68,
-        x2: 978,
-        y1: top + height,
-        y2: top + height,
-        stroke: "#ffffff20"
-      },
-      svg
-    );
-
-    txt(svg, 0, top + 12, units[panel]);
-
-    txt(
-      svg,
-      0,
-      top + 30,
-      panel === 0 ? fmt(maximum) : maximum.toFixed(2)
-    );
-
-    txt(
-      svg,
-      0,
-      top + height,
-      panel === 0 ? fmt(minimum) : minimum.toFixed(2)
-    );
-
-    let path = "";
-    let connected = false;
-
-    data.forEach((row, index) => {
-      if (!Number.isFinite(row[key])) {
-        connected = false;
-        return;
-      }
-
-      path +=
-        `${connected ? "L" : "M"}${X(index)},${Y(row[key])}`;
-
-      connected = true;
-    });
-
-    el(
-      "path",
-      {
-        d: path,
-        fill: "none",
-        stroke: colors[panel],
-        "stroke-width": 2
-      },
-      svg
-    );
-
-    el(
-      "line",
-      {
-        x1: X(idx),
-        x2: X(idx),
-        y1: top,
-        y2: top + height,
-        stroke: "#ffffff90",
-        "stroke-dasharray": "3 4"
-      },
-      svg
-    );
-
-    if (Number.isFinite(data[idx][key])) {
-      el(
-        "circle",
-        {
-          cx: X(idx),
-          cy: Y(data[idx][key]),
-          r: 4,
-          fill: "#f0f6df"
-        },
-        svg
-      );
+  const width = chartWidth(svg), left = 58, right = width - 12;
+  const panelHeight = 192, plotHeight = 98;
+  svg.setAttribute('viewBox', `0 0 ${width} ${panelHeight * 3 + 25}`);
+  const panels = [
+    ['kelp', 'Kelp canopy area (km\u00b2)', '#bdd794'],
+    ['temp', 'Surface temperature vs. seasonal average (\u00b0C)', '#ffb0a0'],
+    ['up', 'Regional upwelling index (m\u00b2/s)', '#ffe4af']
+  ];
+  const X = index => left + index / (data.length - 1) * (right - left);
+  panels.forEach(([key, title, color], panel) => {
+    const base = panel * panelHeight;
+    wrappedText(svg, 0, base + 16, title, width, 14);
+    const top = base + 53, bottom = top + plotHeight;
+    const values = data.map(row => key === 'kelp' && row[key] !== null ? row[key] / 1e6 : row[key]);
+    const [lo, hi] = key === 'kelp'
+      ? [0, Math.max(0.000001, ...values.filter(Number.isFinite)) * 1.06]
+      : paddedRange(values);
+    const Y = value => bottom - (value - lo) / (hi - lo) * plotHeight;
+    const ticks = key === 'kelp' ? [0, hi / 2, hi]
+      : [lo, 0, hi].filter(value => value === 0 || Math.abs(Y(value) - Y(0)) >= 18);
+    for (const value of ticks) {
+      const zero = value === 0;
+      el('line', {x1:left,x2:right,y1:Y(value),y2:Y(value),stroke:zero?'#f0f6dfa0':'#ffffff24','stroke-dasharray':zero?'4 3':'none'}, svg);
+      txt(svg, 0, Y(value)+4, value.toFixed(key === 'kelp' ? 2 : 1), '#b8cdcf', 12);
     }
+    let path = '', connected = false;
+    values.forEach((value, index) => {
+      if (!Number.isFinite(value)) { connected = false; return; }
+      path += `${connected?'L':'M'}${X(index)},${Y(value)}`; connected = true;
+    });
+    el('path', {d:path,fill:'none',stroke:color,'stroke-width':2}, svg);
+    el('line', {x1:X(idx),x2:X(idx),y1:top,y2:bottom,stroke:'#fff','stroke-dasharray':'3 3'}, svg);
+    if (values[idx] !== null) el('circle', {cx:X(idx),cy:Y(values[idx]),r:4,fill:color}, svg);
+    if (panel === 1) wrappedText(svg, left, bottom+18, '0 = typical for that season', right-left, 12, '#b8cdcf');
+    if (panel === 2) wrappedText(svg, left, bottom+18, '0 = no net upward or downward transport', right-left, 12, '#b8cdcf');
   });
-
-  for (const index of [0, 20, 40, 60, 80, 100, 123]) {
-    txt(
-      svg,
-      68 + index / (data.length - 1) * 910 - 12,
-      332,
-      data[index].year
-    );
-  }
+  [0, 60, 123].forEach(index => txt(svg, Math.min(right-28,X(index)), panelHeight*3+15, data[index].year, '#b8cdcf', 12));
+  setText('#seriesSelection', `${dateLabel(data[idx])} \u00b7 Canopy: ${area(data[idx].kelp)} \u00b7 Temperature: ${signed(data[idx].temp)} \u00b0C \u00b7 Regional upwelling: ${signed(data[idx].up,3)} m\u00b2/s.${kelpNote(data[idx])}`);
 }
 
-function scatter() {
-  const svg = $("#scatter");
-
-  if (!svg) {
-    return;
-  }
-
-  svg.replaceChildren();
-
-  const key = $("#variable")?.value ?? "temp";
-  const lag = Number($("#lag")?.value ?? 0);
-
-  const environment = anomalies(key);
-  const kelp = anomalies("kelp");
-  const pairs = [];
-
-  // Keep missing quarters in place so lags follow the calendar.
+function scatterPairs(key, lag) {
+  const environment = anomalies(key), kelp = anomalies('kelp'), pairs = [];
   for (let index = lag; index < data.length; index++) {
-    if (
-      Number.isFinite(environment[index - lag]) &&
-      Number.isFinite(kelp[index])
-    ) {
-      pairs.push({
-        x: environment[index - lag],
-        y: kelp[index],
-        index
-      });
-    }
+    if (Number.isFinite(environment[index-lag]) && Number.isFinite(kelp[index]))
+      pairs.push({x:environment[index-lag],y:kelp[index],index});
   }
-
-  setText(
-    "#pairCount",
-    `${pairs.length} paired quarters · project data`
-  );
-
-  if (!pairs.length) {
-    setText("#rval", "r unavailable");
-
-    txt(
-      svg,
-      90,
-      180,
-      "No paired observations for this comparison."
-    );
-
-    return;
-  }
-
-  const [xmin, xmax] = extent(
-    pairs.map(point => point.x)
-  );
-
-  const [ymin, ymax] = extent(
-    pairs.map(point => point.y)
-  );
-
-  const X = value =>
-    65 + (value - xmin) / (xmax - xmin || 1) * 510;
-
-  const Y = value =>
-    305 - (value - ymin) / (ymax - ymin || 1) * 275;
-
-  for (let tick = 0; tick < 5; tick++) {
-    const y = 30 + tick * 68.75;
-    const xValue = xmin + tick * (xmax - xmin) / 4;
-
-    el(
-      "line",
-      {
-        x1: 65,
-        x2: 575,
-        y1: y,
-        y2: y,
-        stroke: "#ffffff16"
-      },
-      svg
-    );
-
-    txt(
-      svg,
-      2,
-      y + 4,
-      fmt(ymax - tick * (ymax - ymin) / 4),
-      undefined,
-      9
-    );
-
-    txt(
-      svg,
-      X(xValue) - 10,
-      325,
-      xValue.toFixed(2),
-      undefined,
-      10
-    );
-  }
-
-  txt(svg, 65, 16, "Kelp area anomaly (m²)");
-
-  txt(
-    svg,
-    130,
-    358,
-    key === "temp"
-      ? "Temperature anomaly (°C)"
-      : "CUTI anomaly (m²/s)"
-  );
-
-  for (const point of pairs) {
-    const circle = el(
-      "circle",
-      {
-        cx: X(point.x),
-        cy: Y(point.y),
-        r: point.index === idx ? 6 : 3.5,
-        fill: point.index === idx
-          ? "#fff6c5"
-          : `hsl(${
-              160 + point.index / (data.length - 1) * 35
-            } 35% 65%)`,
-        opacity: point.index === idx ? 1 : 0.6,
-        tabindex: 0
-      },
-      svg
-    );
-
-    const kelpDate = data[point.index];
-    const environmentalDate = data[point.index - lag];
-    const title = el("title", {}, circle);
-
-    title.textContent =
-      `Kelp: ${kelpDate.year} Q${kelpDate.quarter}, ` +
-      `anomaly ${fmt(point.y)} m²; ` +
-      `environment: ${environmentalDate.year} ` +
-      `Q${environmentalDate.quarter}, ` +
-      `anomaly ${point.x.toFixed(3)} ` +
-      `${key === "temp" ? "°C" : "m²/s"}`;
-
-    circle.style.cursor = "pointer";
-    circle.onclick = () => select(point.index);
-
-    circle.onkeydown = event => {
-      if (event.key === "Enter") {
-        select(point.index);
-      }
-    };
-  }
-
+  return pairs;
+}
+function pairStatistics(pairs) {
   const count = pairs.length;
-
-  const meanX =
-    pairs.reduce((sum, point) => sum + point.x, 0) / count;
-
-  const meanY =
-    pairs.reduce((sum, point) => sum + point.y, 0) / count;
-
-  let covariance = 0;
-  let varianceX = 0;
-  let varianceY = 0;
-
+  const meanX = pairs.reduce((sum,p)=>sum+p.x,0)/(count||1);
+  const meanY = pairs.reduce((sum,p)=>sum+p.y,0)/(count||1);
+  let covariance=0, varianceX=0, varianceY=0;
   for (const point of pairs) {
-    covariance +=
-      (point.x - meanX) * (point.y - meanY);
-
-    varianceX += (point.x - meanX) ** 2;
-    varianceY += (point.y - meanY) ** 2;
+    covariance+=(point.x-meanX)*(point.y-meanY);
+    varianceX+=(point.x-meanX)**2; varianceY+=(point.y-meanY)**2;
   }
-
-  const correlation =
-    covariance / Math.sqrt(varianceX * varianceY);
-
-  setText(
-    "#rval",
-    Number.isFinite(correlation)
-      ? `r = ${correlation.toFixed(2)}`
-      : "r unavailable"
-  );
-
-  if (varianceX > 0 && count > 1) {
-    el(
-      "line",
-      {
-        x1: X(xmin),
-        y1: Y(
-          meanY + covariance / varianceX * (xmin - meanX)
-        ),
-        x2: X(xmax),
-        y2: Y(
-          meanY + covariance / varianceX * (xmax - meanX)
-        ),
-        stroke: "#e6d8a5",
-        "stroke-width": 1.5,
-        "stroke-dasharray": "5 5"
-      },
-      svg
-    );
+  return {count,meanX,meanY,covariance,varianceX,r:covariance/Math.sqrt(varianceX*varianceY)};
+}
+function scatter() {
+  const svg = $('#scatter'); if (!svg) return;
+  const key = $('#variable')?.value ?? 'temp', lag = Number($('#lag')?.value ?? 0);
+  const pairs = scatterPairs(key,lag), stats = pairStatistics(pairs);
+  svg.replaceChildren();
+  const width=chartWidth(svg), left=64, right=width-15, top=62, bottom=330;
+  svg.setAttribute('viewBox',`0 0 ${width} 420`);
+  // Use the full record for each comparison; changing lag never changes ranges.
+  const [xmin,xmax]=paddedRange(anomalies(key));
+  const [ymin,ymax]=paddedRange(anomalies('kelp').map(v=>v===null?null:v/1e6));
+  svg.dataset.xRange=JSON.stringify([xmin,xmax]); svg.dataset.yRange=JSON.stringify([ymin,ymax]);
+  const X=x=>left+(x-xmin)/(xmax-xmin)*(right-left);
+  const Y=y=>bottom-(y-ymin)/(ymax-ymin)*(bottom-top);
+  wrappedText(svg,0,16,'Kelp canopy vs. same-season average (km\u00b2)',width,13);
+  for (let tick=0;tick<4;tick++) {
+    const y=ymin+(ymax-ymin)*tick/3, x=xmin+(xmax-xmin)*tick/3;
+    el('line',{x1:left,x2:right,y1:Y(y),y2:Y(y),stroke:'#ffffff22'},svg);
+    txt(svg,0,Y(y)+4,y.toFixed(2),'#b8cdcf',12);
+    txt(svg,Math.min(right-28,X(x)-12),bottom+22,x.toFixed(2),'#b8cdcf',12);
   }
+  el('line',{x1:X(0),x2:X(0),y1:top,y2:bottom,stroke:'#e8eee790','stroke-dasharray':'4 3'},svg);
+  el('line',{x1:left,x2:right,y1:Y(0),y2:Y(0),stroke:'#e8eee790','stroke-dasharray':'4 3'},svg);
+  txt(svg,X(0)+4,bottom-4,'0','#e8eee7',12);
+  wrappedText(svg,left,bottom+46,key==='temp'
+    ? 'Surface temperature vs. same-season average (\u00b0C)'
+    : 'Regional upwelling vs. same-season average (m\u00b2/s)',right-left,13);
+  pairs.forEach(point=>{
+    const circle=el('circle',{cx:X(point.x),cy:Y(point.y/1e6),r:point.index===idx?6:4,
+      fill:point.index===idx?'#fff6c5':'#9bd7c3',opacity:point.index===idx?1:0.7,tabindex:0,role:'button'},svg);
+    const label=`Kelp: ${dateLabel(data[point.index])}, difference ${area(point.y)}; ocean conditions: ${dateLabel(data[point.index-lag])}, ${signed(point.x,3)} ${key==='temp'?'\u00b0C':'m\u00b2/s'}.${kelpNote(data[point.index])}`;
+    el('title',{},circle).textContent=label; circle.setAttribute('aria-label',label);
+    circle.style.cursor='pointer'; circle.onclick=()=>select(point.index);
+    circle.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select(point.index)}};
+  });
+  if (stats.varianceX>0 && stats.count>1) {
+    // Restrict the fitted line to the plot rectangle.
+    const defs=el('defs',{},svg),clip=el('clipPath',{id:'scatterClip'},defs);
+    el('rect',{x:left,y:top,width:right-left,height:bottom-top},clip);
+    el('line',{x1:X(xmin),x2:X(xmax),y1:Y((stats.meanY+stats.covariance/stats.varianceX*(xmin-stats.meanX))/1e6),
+      y2:Y((stats.meanY+stats.covariance/stats.varianceX*(xmax-stats.meanX))/1e6),stroke:'#e6d8a5','stroke-width':1.5,'stroke-dasharray':'5 5','clip-path':'url(#scatterClip)'},svg);
+  }
+  const rText=Number.isFinite(stats.r)?`${stats.r<0?'\u2212':''}${Math.abs(stats.r).toFixed(2)}`:'unavailable';
+  setText('#rval',`Pearson r = ${rText}`);
+  setText('#pairCount',`${stats.count} paired quarters \u00b7 project data`);
+  const strength=Math.abs(stats.r)<0.1?'very little':Math.abs(stats.r)<0.35?'slight':Math.abs(stats.r)<0.65?'moderate':'strong';
+  const conditions=key==='temp'?'Warmer-than-usual ocean conditions':'Stronger-than-usual regional upwelling';
+  const timing=lag?` ${lag*3} months earlier`:'';
+  setText('#takeaway',!Number.isFinite(stats.r)?'Not enough variation in paired observations to describe an association.'
+    : strength==='very little'?`${conditions}${timing} showed very little association with kelp canopy (r = ${rText}, ${stats.count} paired quarters).`
+    : `${conditions}${timing} tended to accompany ${strength==='slight'?'slightly ':''}${stats.r<0?'less':'more'} kelp${strength==='moderate'||strength==='strong'?` (a ${strength} association)`:''} (r = ${rText}, ${stats.count} paired quarters).`);
+  const selected=pairs.find(point=>point.index===idx);
+  setText('#pointDetails',selected
+    ? `Selected pair \u2014 Kelp: ${dateLabel(data[idx])}, observed canopy ${area(data[idx].kelp)}, difference from same-season average ${area(selected.y)}. Ocean conditions: ${dateLabel(data[idx-lag])}, difference ${signed(selected.x,3)} ${key==='temp'?'\u00b0C':'m\u00b2/s'}.${kelpNote(data[idx])}`
+    : `${dateLabel(data[idx])}: no paired observation for this timing; missing quarters are not replaced with zeros.`);
+}
+
+// Small baseline anomalies stay neutral; warm/cold use the same visual scale.
+function temperatureEffect(anomaly) {
+  return Math.sign(anomaly) * Math.pow(norm(Math.abs(anomaly), 0.08, 2.5), 0.7);
 }
 
 function sceneTarget(row) {
@@ -555,18 +398,22 @@ function sceneTarget(row) {
   return {
     coverage: row.kelp === null
       ? 0
-      : norm(row.kelp, 0, maximumKelp),
+      : row.kelp === 0 ? 0
+        // Illustration only: minimum three strands; preserve raw observations.
+        : (3 + 87 * Math.pow(norm(row.kelp, 0, maximumKelp), 0.45)) / 90,
 
     warm:
       ($("#tempFx")?.checked ?? true) &&
       row.temp !== null
-        ? Math.max(-1, Math.min(1, row.temp / 2.5))
+        ? temperatureEffect(row.temp)
         : 0,
 
     current:
       row.up === null || maximumTransport === 0
         ? 0
-        : row.up / maximumTransport,
+        : Math.sign(row.up) * Math.sqrt(
+            norm(Math.abs(row.up), 0.005, maximumTransport)
+          ),
 
     currentAlpha:
       ($("#upFx")?.checked ?? true) &&
@@ -585,28 +432,40 @@ function renderMetrics() {
 
   setText(
     "#kelpVal",
-    row.kelp === null ? "Missing" : `${fmt(row.kelp)} m²`
+    row.kelp === null ? "No observation" : area(row.kelp)
   );
 
   setText(
     "#tempVal",
     row.temp === null
       ? "Missing"
-      : `${row.temp > 0 ? "+" : ""}${row.temp.toFixed(2)} °C`
+      : `${row.temp >= 0 ? "+" : ""}${row.temp.toFixed(2)} °C`
   );
 
   setText(
     "#upVal",
-    row.up === null ? "Missing" : row.up.toFixed(3)
+    row.up === null ? "No observation" : `${signed(row.up,3)} m\u00b2/s`
   );
+
+  const temperature = $("#tempVal");
+  if (temperature) {
+    const amount = Math.abs(visual.scene.warm);
+    const accent = visual.scene.warm > 0 ? [255, 124, 113] : [111, 231, 255];
+    temperature.style.color = `rgb(${[232, 238, 231].map(
+      (channel, i) => Math.round(mix(channel, accent[i], Math.min(1, amount * 1.8)))
+    ).join(",")})`;
+  }
+  setText("#currentLabel", row.up === null ? "No observation"
+    : row.up > 0 ? "\u2191 Upwelling"
+    : row.up < 0 ? "\u2193 Downwelling" : "Neutral");
 }
 
 function setDates(row, animate) {
   return [
-    ["#date", `${row.year} · Q${row.quarter}`],
+    ["#date", dateLabel(row)],
     [
       "#sceneDate",
-      `${seasons[row.quarter - 1]} ${row.year}`
+      dateLabel(row)
     ]
   ].map(([selector, label]) => {
     const host = $(selector);
@@ -777,6 +636,9 @@ function select(index, immediate = false) {
   }
 
   retarget(data[idx], now, immediate);
+  if ($("#kelpObservation")) {
+    $("#kelpObservation").hidden = data[idx].kelp !== null;
+  }
 
   if (playing) {
     lastStep = now;
@@ -796,10 +658,12 @@ function select(index, immediate = false) {
   ]) {
     if ($(selector)) {
       $(selector).title =
-        `Selected observation: ${data[idx][key] ?? "Missing"}`;
+        `Selected observation: ${key === 'kelp' ? area(data[idx][key]) : signed(data[idx][key],key === 'up'?3:2) + (key === 'up'?' m\u00b2/s':' \u00b0C')}`;
     }
   }
 
+  setText("#heatmapSelection", `${dateLabel(data[idx])}: ${area(data[idx].kelp)}.${kelpNote(data[idx])}`);
+  document.querySelectorAll(".calcell").forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.i) === idx)));
   series();
   scatter();
 }
@@ -807,9 +671,8 @@ function select(index, immediate = false) {
 on("#series", "onclick", event => {
   const bounds = event.currentTarget.getBoundingClientRect();
 
-  const position =
-    ((event.clientX - bounds.left) /
-      bounds.width * 1000 - 68) / 910;
+  const width = chartWidth(event.currentTarget);
+  const position = ((event.clientX - bounds.left) / bounds.width * width - 58) / (width - 70);
 
   select(
     Math.max(0, Math.min(1, position)) *
@@ -991,48 +854,6 @@ function draw(now) {
     ctx.fill();
   }
 
-  // Positive CUTI moves ribbons upward; negative CUTI moves them downward.
-  if (currentAlpha > 0) {
-    for (let particle = 0; particle < 40; particle++) {
-      const alpha =
-        currentAlpha *
-        Math.max(
-          0,
-          Math.min(1, strength * 40 - particle)
-        );
-
-      if (alpha === 0) {
-        continue;
-      }
-
-      const x = rand(particle + 30) * w;
-      const cycle = h + 30;
-      const position =
-        currentTravel + rand(particle + 200) * h;
-
-      const y =
-        h - ((position % cycle + cycle) % cycle);
-
-      ctx.beginPath();
-      ctx.moveTo(x, y + 18);
-
-      ctx.quadraticCurveTo(
-        x + Math.sin(time + particle) * 15,
-        y,
-        x + Math.sin(time + particle + 1) * 10,
-        y - 18
-      );
-
-      ctx.strokeStyle =
-        `rgba(138,216,229,${
-          alpha * (0.07 + strength * 0.16)
-        })`;
-
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-  }
-
   // Seabed.
   ctx.beginPath();
   ctx.moveTo(0, h);
@@ -1056,7 +877,7 @@ function draw(now) {
       0,
       Math.min(
         1,
-        (coverage - rand(plant + 500)) * 90
+        coverage * 90 - (plant * 37 % 90)
       )
     );
 
@@ -1175,37 +996,69 @@ function draw(now) {
     ctx.fill();
   }
 
-  // Cool-temperature edge effect.
-  if (warm < 0) {
-    const frost = ctx.createRadialGradient(
-      w / 2,
-      h / 2,
-      Math.min(w, h) * 0.25,
-      w / 2,
-      h / 2,
-      Math.max(w, h) * 0.7
-    );
-
-    frost.addColorStop(0, "#b1eaff00");
-
-    frost.addColorStop(
-      1,
-      `rgba(169,220,240,${-warm * 0.22})`
-    );
-
-    ctx.fillStyle = frost;
+  // Red heat / icy cyan are keyed to the seasonal-baseline anomaly, not season.
+  const heat = Math.abs(warm);
+  if (heat > 0) {
+    const color = warm > 0 ? "255,70,55" : "85,224,255";
+    const glow = ctx.createRadialGradient(w / 2, h * 0.45, 0,
+      w / 2, h * 0.45, Math.max(w, h) * 0.65);
+    glow.addColorStop(0, `rgba(${color},${heat * 0.04})`);
+    glow.addColorStop(0.6, `rgba(${color},${heat * 0.22})`);
+    glow.addColorStop(1, `rgba(${color},${heat * 0.72})`);
+    ctx.fillStyle = glow;
     ctx.fillRect(0, 0, w, h);
+    // Warm ripples and cold crystalline edge glints freeze with Motion.
+    ctx.strokeStyle = `rgba(${warm > 0 ? "255,153,128" : "176,247,255"},${heat * 0.4})`;
+    ctx.lineWidth = warm > 0 ? 2 : 1.5;
+    for (let glint = 0; glint < 12; glint++) {
+      const x = (glint + 0.5) / 12 * w;
+      const y = 25 + rand(glint + 1300) * h * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(x - 12, y);
+      if (warm > 0) ctx.quadraticCurveTo(x, y + Math.sin(time + glint) * 12, x + 12, y);
+      else { ctx.lineTo(x, y + 8); ctx.lineTo(x + 5, y - 10); }
+      ctx.stroke();
+    }
   }
 
-  if (data[idx].kelp === null) {
+  // Amber current streams stay distinct from cyan frost and red warmth.
+  // Signed travel reverses smoothly; arrowheads also show direction when paused.
+  if (currentAlpha > 0 && strength > 0) {
+    ctx.save();
+    const direction = Math.sign(current);
+    const cycle = Math.max(1, h * 0.73);
+    for (let stream = 0; stream < 18; stream++) {
+      const alpha = currentAlpha * Math.min(1, Math.max(0, 3 + strength * 15 - stream))
+        * Math.min(1, strength * 6);
+      if (!alpha) continue;
+      const x = (stream + 0.5) / 18 * w + Math.sin(time * 0.4 + stream) * 5;
+      ctx.strokeStyle = `rgba(255,211,130,${alpha * (0.3 + strength * 0.4)})`;
+      ctx.fillStyle = `rgba(255,228,175,${alpha * 0.9})`;
+      ctx.shadowColor = "#ffd382";
+      ctx.shadowBlur = 5;
+      ctx.lineWidth = 1.5 + strength;
+      for (let particle = 0; particle < 3; particle++) {
+        const position = currentTravel + (particle / 3 + rand(stream + 1700)) * cycle;
+        const y = h - 35 - ((position % cycle + cycle) % cycle);
+        ctx.beginPath();
+        ctx.moveTo(x, y + direction * (15 + strength * 20));
+        ctx.quadraticCurveTo(x + 5, y + direction * 10, x, y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - 4, y + direction * 7);
+        ctx.lineTo(x, y);
+        ctx.lineTo(x + 4, y + direction * 7);
+        ctx.stroke();
+        ctx.beginPath();ctx.arc(x, y, 1.5 + strength, 0, Math.PI * 2);ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  if (data[idx].kelp === null && !$("#kelpObservation")) {
     ctx.fillStyle = "#e9edde";
     ctx.font = "14px system-ui";
-
-    ctx.fillText(
-      "No kelp measurement for this quarter",
-      25,
-      h * 0.55
-    );
+    ctx.fillText("No observation", 25, h * 0.55);
   }
 
   requestAnimationFrame(draw);
@@ -1481,7 +1334,7 @@ async function loadProjectData() {
     `PROJECT DATA · ${kelpRows.size} kelp, ` +
     `${tempRows.size} temperature, ` +
     `${upRows.size} CUTI quarters · ` +
-    "1995 Q4 kelp is missing."
+    "1995 Q4 kelp is missing; 1996 Q1 is a flagged reported zero pending team review."
   );
 
   const validPairs = data.filter(row =>
@@ -1529,3 +1382,14 @@ loadProjectData().catch(error => {
     true
   );
 });
+// Redraw labels at their real CSS width so iframe text is never shrunk to desktop size.
+for (const selector of ['#series', '#scatter']) {
+  const svg = $(selector);
+  if (svg) {
+    let previousWidth = 0;
+    new ResizeObserver(() => {
+      const width = chartWidth(svg);
+      if (ready && width !== previousWidth) { previousWidth = width; series(); scatter(); }
+    }).observe(svg);
+  }
+}

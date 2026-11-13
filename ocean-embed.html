@@ -3,18 +3,37 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Ocean time machine: illustrative La Jolla kelp explorer with synthetic demonstration data.">
+  <meta name="description" content="La Jolla kelp, seasonal temperature anomalies, and regional CUTI from project CSV observations.">
   <title>Ocean time machine | La Jolla Kelp Explorer</title>
   <link rel="stylesheet" href="src/styles.css">
   <script src="src/main.js" defer></script>
 </head>
 <body class="embed-page embed-ocean">
-<div class="notice" id="notice">ILLUSTRATIVE PROTOTYPE · All values are synthetic demonstration data. These animations and correlations are not research findings.</div>
+<div class="notice" id="notice" role="status">Loading project CSV observations...</div>
 <main aria-label="Ocean time machine">
-<div id="explore" class="scene-wrap"><canvas id="ocean" aria-label="Illustrative underwater kelp scene controlled by the selected quarter" role="img"></canvas><div class="overlay"><div class="eyebrow">The ocean time machine</div><h2 id="sceneDate">Winter 1995</h2><p>One moment. Three measurements.<br>Drag the timeline to explore their changes.</p></div><div class="scene-meta">LA JOLLA, CALIFORNIA<br><br>ILLUSTRATED CROSS-SECTION</div><div class="scene-caption">Kelp extent represents canopy area. Plant height, currents, and water effects are illustrative.</div><div class="layer-controls"><label><input id="tempFx" type="checkbox" checked> Temperature</label><label><input id="upFx" type="checkbox" checked> Upwelling</label><label><input id="motion" type="checkbox" checked> Motion</label></div></div>
-<div class="timeline"><div class="time-head"><button class="button" id="play" aria-label="Play timeline">▶ Play</button><strong id="date">1995 · Q1</strong><input id="time" type="range" min="0" max="123" value="0" aria-label="Selected year and quarter"></div><div class="years"><span>1995</span><span>2000</span><span>2005</span><span>2010</span><span>2015</span><span>2020</span><span>2025</span></div></div>
-<div class="metrics" aria-live="polite"><div class="metric"><label>Kelp canopy area</label><div class="value" id="kelpVal"></div><small>Extent of surface canopy</small></div><div class="metric"><label>Temperature anomaly</label><div class="value" id="tempVal"></div><small>Relative to seasonal baseline</small></div><div class="metric"><label>Upwelling index</label><div class="value" id="upVal"></div><small id="upUnit">Synthetic index · arbitrary units</small></div></div>
-<section class="content"><div class="section-head"><div><div class="eyebrow">01 / See the rhythm</div><h2>Every season leaves a trace.</h2><p class="sub">Each square is one quarter. Darker green means greater canopy area. Select a square to visit that moment underwater.</p></div><span class="eyebrow">LESS KELP → MORE KELP</span></div><div class="chartbox"><div class="heatrows"><div class="quarters"><span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span></div><div class="calendar" id="calendar"></div></div><div class="calyears"><span>1995</span><span>2000</span><span>2005</span><span>2010</span><span>2015</span><span>2020</span><span>2025</span></div></div></section>
+<div id="explore" class="scene-wrap"><canvas id="ocean" aria-label="Illustrative underwater kelp scene controlled by the selected quarter" role="img"></canvas><div id="kelpObservation" class="observation-state" hidden>No observation<br><small>Kelp data unavailable for this quarter</small></div><div class="overlay"><h2 id="sceneDate">Loading date...</h2></div><div class="scene-meta">LA JOLLA, CALIFORNIA<br><br>ILLUSTRATED CROSS-SECTION</div><div class="scene-caption">Kelp density uses a nonlinear visual scale. Amber arrows show regional CUTI direction; red/cyan shows temperature anomaly.</div><div class="layer-controls"><label><input id="tempFx" type="checkbox" checked> Temperature</label><label><input id="upFx" type="checkbox" checked> Upwelling</label><label><input id="motion" type="checkbox" checked> Motion</label></div></div>
+<div class="timeline"><div class="time-head"><button class="button" id="play" aria-label="Play timeline">▶ Play</button><strong id="date">Loading date...</strong><input id="time" type="range" min="0" max="123" value="0" aria-label="Selected year and quarter"></div><div class="years"><span>1995</span><span>2000</span><span>2005</span><span>2010</span><span>2015</span><span>2020</span><span>2025</span></div></div>
+<div class="metrics" aria-live="polite"><div class="metric"><label>Kelp canopy area</label><div class="value" id="kelpVal"></div><small>Measured surface canopy area (km&sup2;)</small></div><div class="metric"><label>Surface temperature vs. seasonal average</label><div class="value" id="tempVal"></div><small>Relative to seasonal baseline</small></div><div class="metric"><label>Regional upwelling index</label><div class="transport-reading"><div class="value" id="upVal"></div><span id="currentLabel" class="current-label"></span></div><small id="upUnit">Regional water transport at 33&deg;N</small></div></div>
+<aside class="scene-key" aria-label="How to read the scene">
+ <span><i class="key-mark warm"></i><strong>Red:</strong> warmer than usual for that season</span>
+ <span><i class="key-mark cold"></i><strong>Icy cyan:</strong> cooler than usual for that season</span>
+ <span><i class="key-mark current">&uarr;&darr;</i><strong>Amber arrows:</strong> regional water moving up (upwelling) or down (downwelling)</span>
+ <p>The measured canopy area above is unchanged. Illustrated kelp density is scaled to make small observations visible; it is not a map of individual plants.</p>
+</aside>
+<section class="content" aria-labelledby="canopyTitle">
+  <div class="section-head"><div><h2 id="canopyTitle">Kelp canopy area by year and season</h2>
+  <p class="sub">Kelp canopy is the floating part of the forest seen from above. Each square is one three-month observation. Tap or click a square to explore it; use arrow keys to move between years and seasons.</p></div></div>
+  <div class="chartbox">
+    <div id="canopyLegend" class="canopy-legend" aria-label="Canopy color bands in square kilometres"></div>
+    <p class="chart-help">On a small screen, swipe the grid to see more years. Home and End move to the first and last year.</p>
+    <div class="heatmap-scroll" tabindex="0" role="region" aria-label="Scrollable canopy observations by year and season">
+      <div id="heatmapYears" class="heatmap-years" aria-hidden="true"></div>
+      <div class="heatrows"><div class="quarters"><span>Winter (Q1)</span><span>Spring (Q2)</span><span>Summer (Q3)</span><span>Fall (Q4)</span></div><div class="calendar" id="calendar"></div></div>
+    </div>
+    <p id="heatmapSelection" class="selection-detail" role="status"></p>
+    <p class="data-note">Reported zero and no observation are different. 1996 Q1 is flagged as blank in the source despite a reported zero and some cloud-free cells. Its analytical treatment is unchanged pending team review; it is not a confirmed absence. 1995 Q4 has no usable kelp observation.</p>
+  </div>
+</section>
 </main>
 </body>
 </html>

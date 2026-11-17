@@ -24,7 +24,7 @@ class Element {
   }
 }
 
-async function check(file, width = 1000) {
+async function check(file, width = 1000, failOni = false) {
   Element.width = width;
   let now = 0;
   const html = fs.readFileSync(path.join(root, file), 'utf8');
@@ -36,7 +36,7 @@ async function check(file, width = 1000) {
     structuredClone, console: { info() {}, error(error) { throw error; } },
     performance: { now: () => now }, matchMedia: () => ({ matches: false }),
     requestAnimationFrame() {}, ResizeObserver: class { observe() {} }, devicePixelRatio: 1,
-    fetch: async url => ({ ok: true, text: async () => fs.readFileSync(path.join(root, url), 'utf8') }),
+    fetch: async url => ({ ok: !(failOni && url.endsWith('oni_ond_v6.csv')), status: 503, text: async () => fs.readFileSync(path.join(root, url), 'utf8') }),
     document: {
       querySelector: selector => nodes[selector] ?? null,
       querySelectorAll: () => nodes['#calendar']?.children ?? [],
@@ -48,6 +48,58 @@ async function check(file, width = 1000) {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(run('ready'), true);
   const original = run('JSON.stringify(data)');
+  for(const [quarter,r,count] of [[1,'-0.17',31],[2,'-0.01',31],[3,'-0.27',31],[4,'-0.36',30]]) {
+    assert.equal(run(`pairStatistics(seasonalPairs(${quarter})).r.toFixed(2)`),r);
+    assert.equal(run(`seasonalPairs(${quarter}).length`),count);
+  }
+  if(nodes['#seasonalPlots'] && !failOni) {
+    assert.equal(run('oniState'),'loaded');
+    for(const [group,r,count] of [['all','-0.36',30],['above','-0.63',10],['below','-0.16',20]]) {
+      assert.equal(run(`pairStatistics(fallGroups().${group}).r.toFixed(2)`),r);
+      assert.equal(run(`fallGroups().${group}.length`),count);
+    }
+    const first=nodes['#seasonalPlot1'];
+    for(let q=1;q<=4;q++)for(const key of ['xRange','yRange','xTicks','yTicks'])
+      assert.equal(nodes[`#seasonalPlot${q}`].dataset[key],first.dataset[key]);
+    const fall=nodes['#seasonalPlot4'];
+    const points=()=>fall.children.filter(node=>node.tagName==='g');
+    const fit=()=>fall.children.find(node=>node.attributes.class==='seasonal-trend');
+    const baseFit=JSON.stringify(fit().attributes);
+    nodes['#highlightOni'].checked=true;nodes['#highlightOni'].onchange();
+    assert.equal(points().length,30);
+    assert.equal(points().filter(node=>node.attributes['data-highlighted']==='true').length,10);
+    assert.equal(JSON.stringify(fit().attributes),baseFit);
+    assert.equal(nodes['#oniOverlay'].hidden,false);
+    const point=points()[0];point.onfocus();
+    assert(nodes['#seasonalDetails4'].textContent.includes('OND ONI:'));
+    point.onclick();assert.equal(nodes['#time'].value,point.attributes['data-index']);
+    assert.equal(points()[0],point); // Selection preserves focusable point nodes.
+    run('oniByYear.delete(1997); renderSeasonalPlots()');
+    assert.equal(points().length,30);
+    assert.equal(run('fallGroups().unknown.length'),1);
+    assert.equal(run('fallGroups().above.length'),9);
+    assert.equal(run('fallGroups().below.length'),20);
+    assert(nodes['#fallOverlayCaption'].textContent.includes('9 observations'));
+    const unknown=points().find(node=>node.attributes['data-oni-known']==='false');
+    unknown.onmouseenter();assert(nodes['#seasonalDetails4'].textContent.includes('ONI: unavailable'));
+    run('oniByYear.set(1997,2.3);oniByYear.set(2012,0.5);renderSeasonalPlots()');
+    assert.equal(run('fallGroups().above.length'),11); // Inclusive cutoff, not > 0.5.
+    run('oniByYear.set(2012,0.1);renderSeasonalPlots()');
+    nodes['#highlightOni'].checked=false;nodes['#highlightOni'].onchange();
+    assert.equal(points().length,30);
+    assert.equal(points().filter(node=>node.attributes['data-highlighted']==='true').length,0);
+    assert.equal(JSON.stringify(fit().attributes),baseFit);
+  }
+
+  if(nodes['#seasonalPlots'] && failOni) {
+    assert.equal(run('oniState'),'error');
+    assert.equal(run('fallGroups().all.length'),30);
+    assert.equal(run('fallGroups().unknown.length'),30);
+    assert.equal(run('fallGroups().above.length'),0);
+    assert.equal(run('fallGroups().below.length'),0);
+    assert.equal(nodes['#seasonalPlot4'].children.filter(node=>node.tagName==='g').length,30);
+    assert(nodes['#oniStatus'].textContent.includes('ONI overlay unavailable'));
+  }
   assert.equal(run('scatterPairs("temp",0).length'), 123);
   assert.equal(run('pairStatistics(scatterPairs("temp",0)).r.toFixed(2)'), '-0.24');
   assert.equal(run('area(28)'), '0.000028 km\u00b2');
@@ -122,8 +174,9 @@ async function check(file, width = 1000) {
   run('select(123, true)'); nodes['#play'].onclick(); frame(1799); assert.equal(run('idx'), 123);
   frame(1); assert.equal(run('idx'), 0); frame(900); assert.equal(run('transition'), null);
   assert.equal(run('JSON.stringify(data)'), original);
-  console.log(`PASS ${file} at ${width}px: real data, warm/cold/neutral, low/high/zero/missing kelp, signed CUTI, interruption, Motion, autoplay, all six comparisons/lags, exact km2 conversion, unchanged observations`);
+  console.log(`PASS ${file} at ${width}px${failOni ? " (ONI unavailable)" : ""}: real data, warm/cold/neutral, low/high/zero/missing kelp, signed CUTI, interruption, Motion, autoplay, all six comparisons/lags, exact km2 conversion, unchanged observations`);
 }
 (async () => {
   for (const width of [1000,320]) for (const file of ['ocean-embed.html', 'relationships-embed.html', 'index.html']) await check(file,width);
+  await check('relationships-embed.html',320,true);
 })().catch(error => { console.error(error); process.exitCode = 1; });

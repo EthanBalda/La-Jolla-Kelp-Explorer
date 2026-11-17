@@ -11,6 +11,7 @@
 const frames=[...document.querySelectorAll('iframe')];
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const logs=[];let running=false;
+async function waitFor(predicate, milliseconds=6000){for(let elapsed=0;elapsed<milliseconds;elapsed+=50){if(predicate())return true;await delay(50)}return predicate()}
 async function check(){
  if(running)return;running=true;
  logs.length=0;
@@ -54,12 +55,43 @@ async function check(){
      assert(d.querySelector('#pairCount').textContent.startsWith(`${123-Number(timing)} paired`),`${key}, lag ${timing}: observed pairs`);
     }
    }
+   if(d.querySelector('#seasonalPlots')){
+    const plots=[1,2,3,4].map(q=>d.querySelector(`#seasonalPlot${q}`));
+    for(const [i,expected,count] of [[0,-0.17,31],[1,-0.01,31],[2,-0.27,31],[3,-0.36,30]]){
+     assert(Number(Number(plots[i].dataset.correlation).toFixed(2))===expected&&Number(plots[i].dataset.pairedYears)===count,`season ${i+1}: real paired correlation`);
+     assert(['xRange','yRange','xTicks','yTicks'].every(key=>plots[i].dataset[key]===plots[0].dataset[key]),`season ${i+1}: shared limits and ticks`);
+    }
+    const columns=w.getComputedStyle(d.querySelector('.seasonal-grid')).gridTemplateColumns.split(' ').length;
+    assert(columns===(d.documentElement.clientWidth>700?2:1),'responsive seasonal grid');
+    const fall=plots[3],toggle=d.querySelector('#highlightOni');
+    const line=()=>fall.querySelector('.seasonal-trend').outerHTML;
+    const initialLine=line();
+    toggle.click();
+    assert(fall.querySelectorAll('.seasonal-point').length===30&&fall.querySelectorAll('.oni-highlight').length===10,'ONI toggle retains all points and outlines ten falls');
+    assert(line()===initialLine,'ONI toggle preserves overall fitted trend');
+    const subgroup=d.querySelector('#fallGroupStats').textContent;
+    assert(subgroup.includes('0.63')&&subgroup.includes('10 paired years')&&subgroup.includes('0.16')&&subgroup.includes('20 paired years'),'dynamic ONI subgroup results');
+    const point=fall.querySelector('.seasonal-point');
+    point.dispatchEvent(new w.Event('mouseenter'));
+    assert(d.querySelector('#seasonalDetails4').textContent.includes('OND ONI:')&&d.querySelector('#seasonalDetails4').textContent.includes('1996'),'hover details include fall year and ONI');
+    point.focus();
+    assert(d.querySelector('#seasonalDetails4').textContent.includes('Kelp canopy area anomaly:'),'focus details include plotted values');
+    point.dispatchEvent(new w.MouseEvent('click',{bubbles:true}));assert(slider.value===point.dataset.index&&point.isConnected,'tap selection links timeline without replacing the focused node');
+    point.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',cancelable:true}));
+    assert(slider.value===point.dataset.index,'seasonal keyboard selection');
+    toggle.click();
+    assert(fall.querySelectorAll('.seasonal-point').length===30&&fall.querySelectorAll('.oni-highlight').length===0&&line()===initialLine,'ONI off preserves all falls and overall trend');
+   }
    const circle=d.querySelector('#scatter circle');circle.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter'}));assert(slider.value==='2','scatter keyboard selection links to quarter');
    d.querySelector('#series').dispatchEvent(new w.MouseEvent('click',{clientX:d.querySelector('#series').getBoundingClientRect().left+d.querySelector('#series').getBoundingClientRect().width*.8}));
    assert(+slider.value>80,'series chart links to quarter');
   }
-  frame.scrollIntoView({block:'start'});motion.checked=true;motion.dispatchEvent(new w.Event('change'));d.querySelector('#play').click();const initial=slider.value;await delay(2850);await new Promise(resolve=>w.requestAnimationFrame(resolve));
-  assert(slider.value!==initial,'autoplay advances');assert(d.querySelector('#date').children.length===1,'autoplay settles before next advance');d.querySelector('#play').click();
+  frame.scrollIntoView({block:'start'});motion.checked=true;motion.dispatchEvent(new w.Event('change'));d.querySelector('#play').click();const initial=slider.value;
+  const advanced=await waitFor(()=>slider.value!==initial);
+  assert(advanced,'autoplay advances');
+  const advancedQuarter=slider.value;
+  const settled=await waitFor(()=>d.querySelector('#date').children.length===1,1500);
+  assert(settled&&slider.value===advancedQuarter,'autoplay settles before next advance');d.querySelector('#play').click();
  }
  for(const frame of frames){const d=frame.contentDocument;logs.push(`${d.documentElement.scrollWidth<=d.documentElement.clientWidth?'PASS':'FAIL'} ${frame.title}: final page overflow`)}
  results.textContent=logs.join('\n')+'\nDONE';running=false;
@@ -68,7 +100,7 @@ run.onclick=check;
 async function loaded(){
  for(const frame of frames){
   for(let attempt=0;attempt<200;attempt++){
-   if(frame.contentDocument?.querySelector('#time')?.disabled===false && frame.contentDocument?.querySelector('#notice')?.textContent.includes('PROJECT DATA'))break;
+   if(frame.contentDocument?.querySelector('#time')?.disabled===false && frame.contentDocument?.querySelector('#notice')?.textContent.includes('PROJECT DATA') && (!frame.contentDocument?.querySelector('#seasonalPlots') || frame.contentDocument.querySelector('#oniStatus').textContent.includes('snapshot:')))break;
    await delay(50);
   }
  }
@@ -87,5 +119,15 @@ function previewCase(){
  if(location.hash)document.getElementById(location.hash.slice(1))?.scrollIntoView({block:'start'});
  results.textContent=`Real project observations: ${year} Q${quarter}. Motion off shows static current direction. Turn Motion on inside a frame to animate.`;
 }
-loaded().then(()=>new URLSearchParams(location.search).has('case')?previewCase():check());
+function previewSeasonal(){
+ const params=new URLSearchParams(location.search);
+ const frame=frames.find(item=>item.title===(params.has('narrow')?'Relationships narrow iframe':'Relationships full width'));
+ frame.scrollIntoView({block:'start'});
+ const d=frame.contentDocument;
+ if(params.has('highlight'))d.querySelector('#highlightOni').click();
+ const target=d.querySelector(params.has('fall')?'#seasonalTitle4':'#seasonalPlots');
+ target.scrollIntoView({block:'start'});
+ results.textContent='Seasonal comparison preview using real CSV observations and the local ONI v6 snapshot.';
+}
+loaded().then(()=>new URLSearchParams(location.search).has('seasonal')?previewSeasonal():new URLSearchParams(location.search).has('case')?previewCase():check());
 </script>

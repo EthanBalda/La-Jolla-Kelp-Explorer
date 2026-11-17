@@ -32,6 +32,56 @@
     <p class="data-note">1996 Q1 remains included as a reported zero pending team review of its conflicting source flag; it is not a confirmed kelp absence.</p>
   </div>
 </section>
+<section class="content" id="seasonalPlots" aria-labelledby="seasonalHeading">
+  <div class="section-head"><div><h2 id="seasonalHeading">Does the temperature&ndash;kelp relationship vary by season?</h2>
+  <p class="sub">Each dot is one year for that season, pairing the same-quarter local surface temperature anomaly (&deg;C) with the kelp canopy area anomaly (km&sup2;). Zero means the average for that season. All four plots share the same axes and ticks; dashed lines show each season's overall fitted trend.</p>
+  <p class="chart-help">Hover, tap, or focus a point for details. Tap or press Enter to select its quarter on the timeline. Only paired observations are shown; missing measurements are not replaced by zeros.</p></div></div>
+  <div class="seasonal-grid">
+<article class="chartbox seasonal-card" aria-labelledby="seasonalTitle1">
+    <div class="seasonal-card-header"><h3 id="seasonalTitle1">Winter (Jan&ndash;Mar)</h3>
+    <p id="seasonalStats1" class="seasonal-stats" role="status">Loading paired years...</p>
+
+    </div>
+    <svg id="seasonalPlot1" role="group" aria-label="Winter temperature and kelp observations; focus a point for details" viewBox="0 0 400 360"></svg>
+    <p id="seasonalDetails1" class="selection-detail" role="status">Hover, tap, or focus a dot to see its year and both anomaly values.</p>
+  </article>
+<article class="chartbox seasonal-card" aria-labelledby="seasonalTitle2">
+    <div class="seasonal-card-header"><h3 id="seasonalTitle2">Spring (Apr&ndash;Jun)</h3>
+    <p id="seasonalStats2" class="seasonal-stats" role="status">Loading paired years...</p>
+
+    </div>
+    <svg id="seasonalPlot2" role="group" aria-label="Spring temperature and kelp observations; focus a point for details" viewBox="0 0 400 360"></svg>
+    <p id="seasonalDetails2" class="selection-detail" role="status">Hover, tap, or focus a dot to see its year and both anomaly values.</p>
+  </article>
+<article class="chartbox seasonal-card" aria-labelledby="seasonalTitle3">
+    <div class="seasonal-card-header"><h3 id="seasonalTitle3">Summer (Jul&ndash;Sep)</h3>
+    <p id="seasonalStats3" class="seasonal-stats" role="status">Loading paired years...</p>
+
+    </div>
+    <svg id="seasonalPlot3" role="group" aria-label="Summer temperature and kelp observations; focus a point for details" viewBox="0 0 400 360"></svg>
+    <p id="seasonalDetails3" class="selection-detail" role="status">Hover, tap, or focus a dot to see its year and both anomaly values.</p>
+  </article>
+<article class="chartbox seasonal-card" aria-labelledby="seasonalTitle4">
+    <div class="seasonal-card-header"><h3 id="seasonalTitle4">Fall (Oct&ndash;Dec)</h3>
+    <p id="seasonalStats4" class="seasonal-stats" role="status">Loading paired years...</p>
+    <div class="oni-controls"><label><input id="highlightOni" type="checkbox" disabled> Highlight El Ni&ntilde;o-like falls</label></div>
+    </div>
+    <svg id="seasonalPlot4" role="group" aria-label="Fall temperature and kelp observations; focus a point for details" viewBox="0 0 400 360"></svg>
+    <p id="seasonalDetails4" class="selection-detail" role="status">Hover, tap, or focus a dot to see its year and both anomaly values.</p>
+    <div id="oniOverlay" hidden>
+      <div class="seasonal-legend"><span><i class="oni-diamond"></i>El Ni&ntilde;o-like falls (OND ONI &ge; +0.5 &deg;C)</span><span><i class="oni-dot"></i>Below the cutoff</span><span><i class="oni-unknown"></i>ONI unavailable (not assigned to either subgroup)</span></div>
+      <p class="chart-help">Below the cutoff includes neutral and La Ni&ntilde;a-like conditions. ONI describes the tropical Pacific; the x-axis describes local La Jolla temperature.</p>
+      <p id="fallGroupStats" class="correlation-numbers" role="status"></p>
+      <p id="fallOverlayCaption" class="chart-help"></p>
+    </div>
+
+  </article>
+  </div>
+  <p id="seasonalCaption" class="chart-help"></p>
+  <p class="data-note">The ONI overlay measures conditions in the tropical Pacific, while each plot's x-axis measures local La Jolla surface temperature. A single OND threshold is an exploratory grouping, not an official El Ni&ntilde;o episode classification. These associations do not establish cause.</p>
+  <p id="oniStatus" class="chart-help" role="status">Loading the local OND ONI table...</p>
+  <p class="chart-help">ONI source: <a class="source-link" href="https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso/oni/v6/" target="_blank" rel="noopener">NOAA CPC historical ONI v6 table</a>, October&ndash;December, 1995&ndash;2025. <a class="source-link" href="data/oni_ond_v6.csv">Local CSV</a> &middot; <a class="source-link" href="data/oni_ond_v6.README.md">Source and threshold notes</a>.</p>
+</section>
 </main>
 </body>
 </html>

@@ -73,7 +73,7 @@ function setText(selector, text) {
 }
 
 function setControlsDisabled(disabled) {
-  for (const selector of ["#time", "#play", "#variable", "#lag"]) {
+  for (const selector of ["#time", "#play", "#variable", "#lag", "#highlightOni"]) {
     if ($(selector)) {
       $(selector).disabled = disabled;
     }
@@ -377,6 +377,177 @@ function scatter() {
     : `${dateLabel(data[idx])}: no paired observation for this timing; missing quarters are not replaced with zeros.`);
 }
 
+// ONI is an optional, local year-level join. It never changes the project record.
+let oniByYear = new Map();
+let oniState = 'loading';
+
+function seasonalPairs(quarter) {
+  return scatterPairs('temp', 0).filter(point => data[point.index].quarter === quarter);
+}
+
+function fallGroups() {
+  const all = seasonalPairs(4);
+  const known = point => Number.isFinite(oniByYear.get(data[point.index].year));
+  return {
+    all,
+    above: all.filter(point => known(point) && oniByYear.get(data[point.index].year) >= 0.5),
+    below: all.filter(point => known(point) && oniByYear.get(data[point.index].year) < 0.5),
+    unknown: all.filter(point => !known(point))
+  };
+}
+
+function seasonalAxes() {
+  const pairs = scatterPairs('temp', 0);
+  const xRange = paddedRange(pairs.map(point => point.x));
+  const yRange = paddedRange(pairs.map(point => point.y / 1e6));
+  const ticks = range => Array.from({length: 4}, (_, i) => range[0] + i * (range[1] - range[0]) / 3);
+  return {xRange, yRange, xTicks: ticks(xRange), yTicks: ticks(yRange)};
+}
+
+function correlationLabel(pairs) {
+  const stats = pairStatistics(pairs);
+  return `r = ${Number.isFinite(stats.r) ? signed(stats.r) : 'unavailable'}, ${stats.count} paired years`;
+}
+
+function seasonalPointLabel(quarter, point) {
+  const year = data[point.index].year;
+  const oni = oniByYear.get(year);
+  const fallDetail = quarter !== 4 ? '' : Number.isFinite(oni)
+    ? ` OND ONI: ${signed(oni, 1)} \u00b0C.`
+    : ` OND ONI: unavailable${oniState === 'loading' ? ' (loading)' : ''}; not assigned to either subgroup.`;
+  return `${year} \u2014 ${seasons[quarter - 1]}. Local surface temperature anomaly: ${signed(point.x)} \u00b0C. ` +
+    `Kelp canopy area anomaly: ${signed(point.y / 1e6, 6)} km\u00b2.${fallDetail}${kelpNote(data[point.index])}`;
+}
+
+function showSeasonalPoint(quarter, point) {
+  setText(`#seasonalDetails${quarter}`, seasonalPointLabel(quarter, point));
+}
+
+function updateSeasonalSelection() {
+  if (!$('#seasonalPlots') || !ready) return;
+  document.querySelectorAll('.seasonal-point').forEach(node => {
+    const selected = Number(node.dataset.index) === idx;
+    node.classList.toggle('selected', selected);
+    node.setAttribute('aria-pressed', String(selected));
+  });
+  const quarter = data[idx].quarter;
+  const point = seasonalPairs(quarter).find(item => item.index === idx);
+  if (point) showSeasonalPoint(quarter, point);
+  else setText(`#seasonalDetails${quarter}`, `${dateLabel(data[idx])}: no paired temperature and kelp observation.`);
+}
+
+function renderSeasonalPlots() {
+  if (!$('#seasonalPlots') || !ready) return;
+  const axes = seasonalAxes();
+  const [xmin, xmax] = axes.xRange, [ymin, ymax] = axes.yRange;
+  const overlay = $('#highlightOni')?.checked ?? false;
+  for (let quarter = 1; quarter <= 4; quarter++) {
+    const svg = $(`#seasonalPlot${quarter}`);
+    if (!svg) continue;
+    const pairs = seasonalPairs(quarter), stats = pairStatistics(pairs);
+    svg.replaceChildren();
+    const width = Math.max(210, Math.round(svg.getBoundingClientRect().width || 400));
+    const left = 58, right = width - 14, top = 47, bottom = 265;
+    const X = value => left + (value - xmin) / (xmax - xmin) * (right - left);
+    const Y = value => bottom - (value - ymin) / (ymax - ymin) * (bottom - top);
+    svg.setAttribute('viewBox', `0 0 ${width} 360`);
+    svg.dataset.xRange = JSON.stringify(axes.xRange);
+    svg.dataset.yRange = JSON.stringify(axes.yRange);
+    svg.dataset.xTicks = JSON.stringify(axes.xTicks);
+    svg.dataset.yTicks = JSON.stringify(axes.yTicks);
+    svg.dataset.pairedYears = String(stats.count);
+    svg.dataset.correlation = String(stats.r);
+    setText(`#seasonalStats${quarter}`, `Pearson ${correlationLabel(pairs)}`);
+    wrappedText(svg, 0, 17, 'Kelp canopy area anomaly (km\u00b2)', width, 13);
+    axes.yTicks.forEach(value => {
+      el('line', {x1: left, x2: right, y1: Y(value), y2: Y(value), stroke: '#ffffff22'}, svg);
+      txt(svg, 0, Y(value) + 4, value.toFixed(2), '#b8cdcf', 12);
+    });
+    axes.xTicks.forEach(value => {
+      txt(svg, Math.min(right - 26, X(value) - 12), bottom + 23, value.toFixed(1), '#b8cdcf', 12);
+    });
+    el('line', {x1: X(0), x2: X(0), y1: top, y2: bottom, stroke: '#edf6d799', 'stroke-dasharray': '4 3'}, svg);
+    el('line', {x1: left, x2: right, y1: Y(0), y2: Y(0), stroke: '#edf6d799', 'stroke-dasharray': '4 3'}, svg);
+    txt(svg, X(0) + 4, bottom - 4, '0', '#edf6d7', 12);
+    wrappedText(svg, left, bottom + 48, 'Surface temperature anomaly (\u00b0C)', right - left, 12);
+    if (stats.varianceX > 0 && stats.count > 1) {
+      const clipId = `seasonalClip${quarter}`;
+      const defs = el('defs', {}, svg), clip = el('clipPath', {id: clipId}, defs);
+      el('rect', {x: left, y: top, width: right - left, height: bottom - top}, clip);
+      el('line', {
+        x1: X(xmin), x2: X(xmax),
+        y1: Y((stats.meanY + stats.covariance / stats.varianceX * (xmin - stats.meanX)) / 1e6),
+        y2: Y((stats.meanY + stats.covariance / stats.varianceX * (xmax - stats.meanX)) / 1e6),
+        stroke: '#e6d8a5', 'stroke-width': 2, 'stroke-dasharray': '5 4',
+        'clip-path': `url(#${clipId})`, class: 'seasonal-trend'
+      }, svg);
+    }
+    pairs.forEach(point => {
+      const x = X(point.x), y = Y(point.y / 1e6);
+      const oni = oniByYear.get(data[point.index].year);
+      const highlighted = quarter === 4 && overlay && Number.isFinite(oni) && oni >= 0.5;
+      const unknown = quarter === 4 && overlay && !Number.isFinite(oni);
+      const group = el('g', {
+        class: 'seasonal-point', tabindex: 0, role: 'button',
+        'aria-label': seasonalPointLabel(quarter, point), 'data-index': point.index,
+        'data-highlighted': String(highlighted), 'data-oni-known': String(Number.isFinite(oni))
+      }, svg);
+      el('title', {}, group).textContent = seasonalPointLabel(quarter, point);
+      el('circle', {cx: x, cy: y, r: 10, fill: 'transparent', class: 'point-hit'}, group);
+      el('circle', {cx: x, cy: y, r: 4.5, fill: unknown ? '#0a2730' : '#9bd7c3',
+        stroke: unknown ? '#b8cdcf' : 'none', 'stroke-dasharray': unknown ? '2 2' : 'none', class: 'point-dot'}, group);
+      if (highlighted) el('rect', {x: x - 7, y: y - 7, width: 14, height: 14,
+        transform: `rotate(45 ${x} ${y})`, fill: 'none', stroke: '#e6b2ff', 'stroke-width': 2,
+        'pointer-events': 'none', class: 'oni-highlight'}, group);
+      group.onmouseenter = group.onfocus = () => showSeasonalPoint(quarter, point);
+      group.onclick = () => { select(point.index); showSeasonalPoint(quarter, point); };
+      group.onkeydown = event => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); group.onclick(); }
+      };
+    });
+  }
+  const groups = fallGroups();
+  if ($('#oniOverlay')) $('#oniOverlay').hidden = !overlay;
+  setText('#fallGroupStats', `All falls: ${correlationLabel(groups.all)}. ` +
+    `El Ni\u00f1o-like falls (OND ONI \u2265 +0.5 \u00b0C): ${correlationLabel(groups.above)}. ` +
+    `Below the cutoff: ${correlationLabel(groups.below)}. ONI unavailable: ${groups.unknown.length} paired falls, excluded from both subgroups.`);
+  const above = pairStatistics(groups.above), below = pairStatistics(groups.below);
+  setText('#fallOverlayCaption', Number.isFinite(above.r) && Number.isFinite(below.r)
+    ? `The fall temperature\u2013kelp relationship was ${Math.abs(above.r) > Math.abs(below.r) ? 'stronger' : 'not stronger'} among falls that met the El Ni\u00f1o-like cutoff. ` +
+      `That group includes only ${above.count} observations in the current dataset, so treat this as an exploratory pattern.`
+    : 'There are not enough paired years with known ONI in both subgroups to compare their correlations.');
+  const seasonal = [1, 2, 3, 4].map(quarter => ({quarter, ...pairStatistics(seasonalPairs(quarter))}));
+  const valid = seasonal.filter(item => Number.isFinite(item.r));
+  if (valid.length) {
+    const strongest = valid.reduce((best, item) => item.r < best.r ? item : best);
+    const flattest = valid.reduce((best, item) => Math.abs(item.r) < Math.abs(best.r) ? item : best);
+    setText('#seasonalCaption', `In this dataset, ${seasons[strongest.quarter - 1].toLowerCase()} had the clearest negative association and ` +
+      `${seasons[flattest.quarter - 1].toLowerCase()} was ${Math.abs(flattest.r) < 0.1 ? 'nearly flat' : 'closest to flat'}. These are associations, not evidence of cause.`);
+  }
+  updateSeasonalSelection();
+}
+
+async function loadFallONI() {
+  try {
+    const rows = await loadQuarterlyCSV('oni_ond_v6.csv', ['year', 'quarter', 'oni_ond_c']);
+    const joined = new Map();
+    for (const [key, record] of rows) {
+      const [year, quarter] = key.split('-').map(Number);
+      if (quarter !== 4) throw new Error('OND ONI rows must use quarter 4.');
+      joined.set(year, measurement(record, 'oni_ond_c'));
+    }
+    oniByYear = joined;
+    oniState = 'loaded';
+    setText('#oniStatus', `Local NOAA CPC ONI v6 snapshot: OND values available for ${[...joined.values()].filter(Number.isFinite).length} years. Retrieved November 13, 2026.`);
+  } catch (error) {
+    oniState = 'error';
+    setText('#oniStatus', `ONI overlay unavailable: ${error.message} All paired fall observations remain visible; no missing ONI is treated as zero.`);
+  }
+  renderSeasonalPlots();
+}
+
+on('#highlightOni', 'onchange', renderSeasonalPlots);
+
 // Small baseline anomalies stay neutral; warm/cold use the same visual scale.
 function temperatureEffect(anomaly) {
   return Math.sign(anomaly) * Math.pow(norm(Math.abs(anomaly), 0.08, 2.5), 0.7);
@@ -666,6 +837,7 @@ function select(index, immediate = false) {
   document.querySelectorAll(".calcell").forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.i) === idx)));
   series();
   scatter();
+  updateSeasonalSelection();
 }
 
 on("#series", "onclick", event => {
@@ -1348,6 +1520,7 @@ async function loadProjectData() {
 
   renderCalendar();
   select(0, true);
+  renderSeasonalPlots();
   setControlsDisabled(false);
 }
 
@@ -1383,13 +1556,17 @@ loadProjectData().catch(error => {
   );
 });
 // Redraw labels at their real CSS width so iframe text is never shrunk to desktop size.
-for (const selector of ['#series', '#scatter']) {
+for (const selector of ['#series', '#scatter', '#seasonalPlot1', '#seasonalPlot2', '#seasonalPlot3', '#seasonalPlot4']) {
   const svg = $(selector);
   if (svg) {
     let previousWidth = 0;
     new ResizeObserver(() => {
-      const width = chartWidth(svg);
-      if (ready && width !== previousWidth) { previousWidth = width; series(); scatter(); }
+      const width = selector.startsWith('#seasonal')
+        ? Math.round(svg.getBoundingClientRect().width || 400) : chartWidth(svg);
+      if (ready && width !== previousWidth) { previousWidth = width; series(); scatter(); renderSeasonalPlots(); }
     }).observe(svg);
   }
 }
+
+// Optional auxiliary data must never prevent the explorer from loading.
+if ($('#seasonalPlots')) loadFallONI();

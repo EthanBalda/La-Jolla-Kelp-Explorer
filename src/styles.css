@@ -81,3 +81,28 @@
  .embed-page .chartbox{padding:12px}
  .chartbox #scatter,.chartbox #series{min-width:0}
 }
+
+/* Seasonal comparisons retain readable axis labels inside narrow embeds. */
+.seasonal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start}
+.seasonal-card{min-width:0}
+.seasonal-card h3{font:25px Georgia,serif;margin:0 0 12px}
+.seasonal-stats{font-size:14px;color:var(--lime);margin:0 0 16px}
+.seasonal-card svg{width:100%;height:auto;overflow:visible}
+.seasonal-card .selection-detail{min-height:90px;margin-bottom:0}
+.seasonal-point{cursor:pointer;outline:none}
+.seasonal-point:hover .point-dot,.seasonal-point:focus .point-dot,.seasonal-point.selected .point-dot{stroke:#fff6c5;stroke-width:3px}
+.seasonal-point:focus .point-hit{stroke:#fff6c5;stroke-width:1.5px;stroke-dasharray:2 2}
+.oni-controls{font-size:14px;line-height:1.6;margin-bottom:14px}
+.oni-controls input{min-width:18px;min-height:18px;vertical-align:middle}
+.seasonal-legend{font-size:12px;line-height:1.6;display:flex;flex-direction:column;gap:6px}
+.seasonal-legend>span{display:flex;align-items:center;gap:9px}
+.oni-diamond{width:11px;height:11px;border:2px solid #e6b2ff;transform:rotate(45deg);flex-shrink:0;margin:2px}
+.oni-dot,.oni-unknown{width:11px;height:11px;border-radius:50%;background:#9bd7c3;flex-shrink:0;margin:2px}
+.oni-unknown{background:transparent;border:2px dashed #b8cdcf}
+#fallGroupStats{display:block;line-height:1.9}
+.source-link{text-decoration:underline;text-underline-offset:3px}
+@media(max-width:700px){.seasonal-grid{grid-template-columns:minmax(0,1fr);gap:20px}.seasonal-card h3{font-size:23px}}
+
+.seasonal-card-header{min-height:116px}
+#oniOverlay{margin-top:18px}
+@media(max-width:700px){.seasonal-card-header{min-height:0}}

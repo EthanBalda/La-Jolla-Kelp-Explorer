@@ -35,3 +35,24 @@ Chart conventions and data quality:
 Run `node tests/scene.test.cjs` for real-CSV regression checks. Open the iframe
 check page for browser control, conversion, missing/zero, all six comparison/lag,
 keyboard selection, playback, and horizontal-overflow checks.
+
+
+Seasonal temperature comparisons:
+
+- `relationships-embed.html#seasonalPlots` adds same-quarter temperature/kelp
+  anomaly plots, with common axes and ticks. Statistics reuse `scatterPairs`,
+  `anomalies`, and `pairStatistics`; source canopy remains in m2 for calculations.
+- The fall overlay joins `data/oni_ond_v6.csv` by calendar year. The NOAA CPC v6
+  OND source, retrieval date, units, and interpretation are documented in
+  `data/oni_ond_v6.README.md`. It is an optional local dependency; a missing ONI
+  value or failed ONI load never removes a paired fall from its plot or overall fit.
+- The inclusive cutoff is OND ONI >= +0.5 C, named El Nino-like falls. The below-
+  cutoff subgroup includes neutral and La Nina-like conditions. Neither subgroup
+  includes unknown ONI. This grouping is distinct from official episode labels.
+- The 1996 Q1 analytical treatment remains unchanged; 1995 Q4 still has missing kelp.
+- Runtime checks in `tests/scene.test.cjs` cover seasonal/subgroup correlations,
+  threshold equality, missing ONI, retained points/fits, details, and selection.
+- Browser checks add common-axis, responsive-grid, toggle, hover/focus/tap, and
+  subgroup checks to the existing desktop/320px iframe suite. For visual review:
+  `http://localhost:5500/tests/embed-preview.html?seasonal=1` and
+  `http://localhost:5500/tests/embed-preview.html?seasonal=1&narrow=1&fall=1&highlight=1`.
